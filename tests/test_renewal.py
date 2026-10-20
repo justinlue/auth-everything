@@ -155,3 +155,26 @@ def test_wrong_type_or_missing_is_format_error(blob, mutate):
     mutate(d)
     with pytest.raises(CoreFormatError):
         renewal.decode_pop(canonical_json(d))
+
+
+@pytest.mark.parametrize("field", ["fp", "challenge"])
+def test_lone_surrogate_is_format_error(blob, pub_der, field):
+    d = json.loads(blob)
+    d[field] = "\ud800"
+    bad = json.dumps(d).encode()  # ensure_ascii escapes it; it parses back to a lone surrogate
+    assert renewal.decode_pop(bad)  # decodes fine; the failure is in the signing-bytes path
+    with pytest.raises(CoreFormatError):
+        verify(bad, pub_der)
+
+
+def test_verify_pop_unsupported_algorithm_is_format_error(blob):
+    from unittest import mock
+
+    from cryptography.exceptions import UnsupportedAlgorithm
+
+    from authev_core import primitives
+    with mock.patch.object(primitives, "load_der_public_key",
+                           side_effect=UnsupportedAlgorithm("x")):
+        with pytest.raises(CoreFormatError):
+            renewal.verify_pop(blob, tpm_pub_der=b"x", expect_challenge=CHAL,
+                               max_age_s=300, now=NOW + 10)

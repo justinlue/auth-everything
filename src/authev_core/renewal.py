@@ -12,11 +12,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 from authev_core.errors import CoreFormatError, CoreVerifyError
-from authev_core.primitives import canonical_json
+from authev_core.primitives import _load_rsa_public_key, canonical_json
 
 Signer = Callable[[bytes], bytes]
 
@@ -95,12 +95,7 @@ def verify_pop(blob: bytes, *, tpm_pub_der: bytes, expect_challenge: str,
     Authenticity is established before any claimed field is acted on.
     """
     req = decode_pop(blob)
-    try:
-        pub = serialization.load_der_public_key(tpm_pub_der)
-    except (ValueError, TypeError) as e:
-        raise CoreFormatError("invalid TPM public key") from e
-    if not isinstance(pub, rsa.RSAPublicKey):
-        raise CoreFormatError("TPM public key is not RSA")
+    pub = _load_rsa_public_key(tpm_pub_der)
     try:
         pub.verify(
             req.sig, _signed_bytes(req),

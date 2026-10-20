@@ -10,12 +10,11 @@ import binascii
 import json
 from collections.abc import Callable
 
-from cryptography.exceptions import UnsupportedAlgorithm
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 
 from authev_core.errors import CoreFormatError, CoreVerifyError
-from authev_core.primitives import canonical_json
+from authev_core.primitives import _load_rsa_public_key, canonical_json
 
 _VERSION = 1
 
@@ -28,12 +27,7 @@ def _oaep() -> padding.OAEP:
 
 def wrap(*, k_p: bytes, product_id: str, version: str, not_after: int,
          tpm_pub_der: bytes) -> bytes:
-    try:
-        pub = serialization.load_der_public_key(tpm_pub_der)
-    except (ValueError, UnsupportedAlgorithm) as e:
-        raise CoreFormatError("invalid TPM public key") from e
-    if not isinstance(pub, rsa.RSAPublicKey):
-        raise CoreFormatError("TPM public key must be RSA")
+    pub = _load_rsa_public_key(tpm_pub_der)
     wk = base64.b64encode(pub.encrypt(k_p, _oaep())).decode("ascii")
     return canonical_json({"v": _VERSION, "pid": product_id, "ver": version,
                            "exp": not_after, "wk": wk})

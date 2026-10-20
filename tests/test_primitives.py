@@ -3,7 +3,7 @@ import os
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from authev_core.errors import CoreVerifyError
+from authev_core.errors import CoreFormatError, CoreVerifyError
 from authev_core.primitives import (
     aes_gcm_decrypt,
     aes_gcm_encrypt,
@@ -56,3 +56,14 @@ def test_argon2id_deterministic_and_salt_sensitive():
     assert len(a) == 32
     assert a == derive_key_argon2id("pw", b"s" * 16)
     assert a != derive_key_argon2id("pw", b"t" * 16)
+
+
+def test_canonical_json_exact_bytes_unicode_preserved():
+    assert canonical_json({"b": [1, "é"], "a": {"z": None, "y": True}}) == (
+        b'{"a":{"y":true,"z":null},"b":[1,"\xc3\xa9"]}')
+
+
+@pytest.mark.parametrize("bad", ["\ud800", float("nan"), float("inf"), float("-inf")])
+def test_canonical_json_unserializable_is_format_error(bad):
+    with pytest.raises(CoreFormatError):
+        canonical_json({"fp": bad})

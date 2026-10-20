@@ -112,7 +112,8 @@ def test_wrap_unsupported_key_type_is_format_error():
     # DER parsing to an algorithm cryptography does not support
     from cryptography.exceptions import UnsupportedAlgorithm
     from unittest import mock
-    with mock.patch.object(assetkey.serialization, "load_der_public_key",
+    from authev_core import primitives
+    with mock.patch.object(primitives, "load_der_public_key",
                            side_effect=UnsupportedAlgorithm("x")):
         with pytest.raises(CoreFormatError):
             assetkey.wrap(k_p=b"\0" * 32, product_id="p", version="1", not_after=1,

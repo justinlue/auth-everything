@@ -4,12 +4,14 @@ import json
 import os
 
 from argon2.low_level import Type, hash_secret_raw
-from cryptography.exceptions import InvalidSignature, InvalidTag
+from cryptography.exceptions import InvalidSignature, InvalidTag, UnsupportedAlgorithm
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 from .errors import CoreFormatError, CoreVerifyError
 
@@ -61,7 +63,25 @@ def derive_key_argon2id(passphrase: str, salt: bytes) -> bytes:
 
 
 def canonical_json(obj: dict) -> bytes:
-    """Signing serialization: sorted keys, no whitespace, UTF-8."""
-    return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    """Signing serialization: sorted keys, no whitespace, UTF-8.
+
+    Unencodable input (lone surrogates, NaN/Infinity) raises CoreFormatError.
+    """
+    try:
+        return json.dumps(
+            obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (UnicodeEncodeError, ValueError) as e:
+        raise CoreFormatError("value cannot be canonically serialized") from e
+
+
+def _load_rsa_public_key(der: bytes) -> rsa.RSAPublicKey:
+    """Parse a DER SubjectPublicKeyInfo; anything but a valid RSA key is a CoreFormatError."""
+    try:
+        pub = load_der_public_key(der)
+    except (ValueError, TypeError, UnsupportedAlgorithm) as e:
+        raise CoreFormatError("invalid RSA public key") from e
+    if not isinstance(pub, rsa.RSAPublicKey):
+        raise CoreFormatError("public key must be RSA")
+    return pub
