@@ -101,3 +101,19 @@ def test_altered_wk_propagates_unwrapper_error(tpm):
     with pytest.raises(ValueError):
         assetkey.unwrap(json.dumps(d).encode(), product_id="prod", now=NOW,
                         unwrap=_unwrapper(tpm))
+
+
+def test_wrap_unsupported_key_type_is_format_error():
+    from cryptography.hazmat.primitives.asymmetric import ec
+    der = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    with pytest.raises(CoreFormatError):
+        assetkey.wrap(k_p=b"\0" * 32, product_id="p", version="1", not_after=1, tpm_pub_der=der)
+    # DER parsing to an algorithm cryptography does not support
+    from cryptography.exceptions import UnsupportedAlgorithm
+    from unittest import mock
+    with mock.patch.object(assetkey.serialization, "load_der_public_key",
+                           side_effect=UnsupportedAlgorithm("x")):
+        with pytest.raises(CoreFormatError):
+            assetkey.wrap(k_p=b"\0" * 32, product_id="p", version="1", not_after=1,
+                          tpm_pub_der=b"x")

@@ -10,6 +10,7 @@ import binascii
 import json
 from collections.abc import Callable
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -29,7 +30,7 @@ def wrap(*, k_p: bytes, product_id: str, version: str, not_after: int,
          tpm_pub_der: bytes) -> bytes:
     try:
         pub = serialization.load_der_public_key(tpm_pub_der)
-    except ValueError as e:
+    except (ValueError, UnsupportedAlgorithm) as e:
         raise CoreFormatError("invalid TPM public key") from e
     if not isinstance(pub, rsa.RSAPublicKey):
         raise CoreFormatError("TPM public key must be RSA")
@@ -66,6 +67,17 @@ def _decode(blob: bytes) -> tuple[str, int, bytes]:
 
 
 def unwrap(blob: bytes, *, product_id: str, now: int, unwrap: Unwrapper) -> bytes:
+    """Return K_p by passing the wrapped key to the injected TPM unwrapper.
+
+    SECURITY NOTE: pid, ver and exp are plaintext and NOT integrity-protected;
+    anyone who can edit the stored blob can rewrite them and the TPM will still
+    decrypt wk. The "wrong_product" and "expired" checks here are advisory
+    routing checks, NOT a security boundary. The binding entitlement and expiry
+    MUST be enforced upstream (leaf certificate and clock mark) before unwrap
+    is ever called. The only cryptographic guarantee of this envelope is that
+    K_p is recoverable solely by the holder of the matching TPM private key.
+    Callers must not treat these two checks as enforcement.
+    """
     # Order: product match first (a blob for another product is the more
     # fundamental error), then expiry; the TPM is touched only after both pass.
     pid, exp, ct = _decode(blob)
